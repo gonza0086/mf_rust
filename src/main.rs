@@ -1,5 +1,6 @@
 mod datasource_reader;
 mod matrix_factorization;
+mod mf;
 
 use datasource_reader::DatasourceReader;
 use matrix_factorization::MatrixFactorization;
