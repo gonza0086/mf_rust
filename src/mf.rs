@@ -1,20 +1,84 @@
-use ndarray::{Array2, Axis};
+use ndarray::{Array, Array2, Axis};
 
-struct MF {
+pub struct MF {
     alpha: f64,
     max_steps: usize,
     k_latent: usize,
     threshold: f64,
 }
 
-impl MF {}
+impl MF {
+    pub fn new(alpha: f64, max_steps: usize, k_latent: usize, threshold: f64) -> MF {
+        MF {
+            alpha,
+            max_steps,
+            k_latent,
+            threshold,
+        }
+    }
 
-fn mse(y: &Array2<f64>, y_hat: &Array2<f64>, mask: &Array2<f64>) -> f64 {
+    // Not yet SGD bud GD
+    fn sgd(&self, y: Array2<f64>) -> (Array2<f64>, f64) {
+        let mask = y.map(|x| {
+            if *x == 0. {
+                return 0.;
+            };
+            return 1.;
+        });
+
+        let (m, n) = y.dim();
+        let mut u = Array2::from_elem((m, self.k_latent), 3.);
+        let mut v = Array2::from_elem((n, self.k_latent), 3.);
+        let mut mean_squared_error = 0.;
+
+        for i in 0..self.max_steps {
+            let estimation = u.dot(&v.t());
+            let (difference, error) = mse(&y, &estimation, &mask);
+
+            mean_squared_error = error;
+
+            if mean_squared_error <= self.threshold {
+                println!("Threshold reached in {} iterations!", i);
+                break;
+            }
+
+            let delta_u = (2. * self.alpha / mask.sum()) * difference.dot(&v);
+            let delta_v = (2. * self.alpha / mask.sum()) * difference.t().dot(&u);
+
+            u = u + &delta_u;
+            v = v + &delta_v;
+        }
+
+        return (u.dot(&v.t()), mean_squared_error);
+    }
+
+    pub fn train(&self, y: Array2<f64>) {
+        let (estimation, error) = self.sgd(y);
+        let prediction = round_all(&estimation);
+
+        println!("MSE = {}\n{}", error, prediction);
+    }
+}
+
+fn mse(y: &Array2<f64>, y_hat: &Array2<f64>, mask: &Array2<f64>) -> (Array2<f64>, f64) {
     let difference = (y - y_hat) * mask;
     let squared_difference = &difference * &difference;
-    let error = squared_difference.sum() / (squared_difference.len() as f64);
+    let error = squared_difference.sum() / (mask.sum() as f64);
 
-    return error as f64;
+    return (difference, error as f64);
+}
+
+fn round_all(y: &Array2<f64>) -> Array2<f64> {
+    y.map(|x| x.round())
+}
+
+fn normalize(y: &Array2<f64>) -> Array2<f64> {
+    y.map(|x| {
+        if *x > 5. {
+            return 5.;
+        }
+        return *x;
+    })
 }
 
 #[cfg(test)]
@@ -28,7 +92,7 @@ mod tests {
         let y_hat = Array2::from_elem((4, 1), 1.);
         let mask = Array2::from_elem((4, 1), 1.);
 
-        let error = mse(&y, &y_hat, &mask);
+        let (_, error) = mse(&y, &y_hat, &mask);
         assert_eq!(0., error);
     }
 
@@ -38,7 +102,7 @@ mod tests {
         let y_hat = arr2(&[[0., 0., 0., 0.], [0., 0., 0., 0.]]);
         let mask = Array2::from_elem((2, 4), 1.);
 
-        let error = mse(&y, &y_hat, &mask);
+        let (_, error) = mse(&y, &y_hat, &mask);
         assert_eq!(1., error);
     }
 
@@ -48,7 +112,7 @@ mod tests {
         let y_hat = arr2(&[[1., 1., 1., 1.], [1., 1., 1., 1.]]);
         let mask = Array2::from_elem((2, 4), 1.);
 
-        let error = mse(&y, &y_hat, &mask);
+        let (_, error) = mse(&y, &y_hat, &mask);
         assert_eq!(1., error);
     }
 
@@ -68,7 +132,7 @@ mod tests {
         ]);
         let mask = Array2::from_elem((4, 4), 1.);
 
-        let error = mse(&y, &y_hat, &mask);
+        let (_, error) = mse(&y, &y_hat, &mask);
         assert_eq!(21.5, error);
     }
 
@@ -78,7 +142,7 @@ mod tests {
         let y_hat = arr2(&[[1., 0., 0., 1.], [1., 1., 1., 1.]]);
         let mask = arr2(&[[1., 0., 0., 1.], [1., 1., 1., 1.]]);
 
-        let error = mse(&y, &y_hat, &mask);
+        let (_, error) = mse(&y, &y_hat, &mask);
         assert_eq!(0., error);
     }
 }

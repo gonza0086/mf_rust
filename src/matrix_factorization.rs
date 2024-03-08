@@ -68,7 +68,7 @@ impl MatrixFactorization {
         println!(
             "Model trained in {}s with an R^2 = {}",
             now.elapsed().as_secs(),
-            r_squared
+            1. - r_squared
         );
         write_to(&prediction, "matrix.data");
 
