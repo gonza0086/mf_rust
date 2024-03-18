@@ -1,4 +1,6 @@
-use ndarray::{Array, Array2, Axis};
+use std::time::Instant;
+
+use ndarray::Array2;
 
 pub struct MF {
     alpha: f64,
@@ -53,10 +55,14 @@ impl MF {
     }
 
     pub fn train(&self, y: Array2<f64>) {
+        let now = Instant::now();
+        println!("Training model...");
+
         let (estimation, error) = self.sgd(y);
         let prediction = round_all(&estimation);
 
         println!("MSE = {}\n{}", error, prediction);
+        println!("Model trained in {}s", now.elapsed().as_secs());
     }
 }
 
