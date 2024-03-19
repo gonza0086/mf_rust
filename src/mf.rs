@@ -1,6 +1,6 @@
+use ndarray::{s, Array2, Axis};
+use rand::Rng;
 use std::time::Instant;
-
-use ndarray::Array2;
 
 pub struct MF {
     alpha: f64,
@@ -20,7 +20,7 @@ impl MF {
     }
 
     // Not yet SGD bud GD
-    fn sgd(&self, y: Array2<f64>) -> (Array2<f64>, f64) {
+    fn gd(&self, y: Array2<f64>) -> (Array2<f64>, f64) {
         let mask = y.map(|x| {
             if *x == 0. {
                 return 0.;
@@ -44,8 +44,49 @@ impl MF {
                 break;
             }
 
-            let delta_u = (2. * self.alpha / mask.sum()) * difference.dot(&v);
-            let delta_v = (2. * self.alpha / mask.sum()) * difference.t().dot(&u);
+            // let delta_u = (2. * self.alpha / mask.sum()) * difference.dot(&v);
+            // let delta_v = (2. * self.alpha / mask.sum()) * difference.t().dot(&u);
+            let delta_u = 2. * self.alpha * error * &v;
+            let delta_v = 2. * self.alpha * error * &u;
+            println!("{:?}", delta_u.shape());
+            println!("{:?}", delta_v.shape());
+
+            u = u + &delta_u;
+            v = v + &delta_v;
+        }
+
+        return (u.dot(&v.t()), mean_squared_error);
+    }
+
+    fn sgd(&self, y: Array2<f64>) -> (Array2<f64>, f64) {
+        let (m, n) = y.dim();
+        let mut u = Array2::from_elem((m, self.k_latent), 3.);
+        let mut v = Array2::from_elem((n, self.k_latent), 3.);
+        let mut mean_squared_error = 0.;
+
+        for i in 0..self.max_steps {
+            let estimation = u.dot(&v.t());
+            let rand_number = rand::thread_rng().gen_range(0..(y.len_of(Axis(0))));
+            let batch_sample = y.slice(s![rand_number..rand_number + 10, ..]);
+
+            let mask = batch_sample.map(|x| {
+                if *x == 0. {
+                    return 0.;
+                };
+                return 1.;
+            });
+
+            let error = mse_v2(&y, &estimation, &mask);
+
+            mean_squared_error = error;
+
+            if mean_squared_error <= self.threshold {
+                println!("Threshold reached in {} iterations!", i);
+                break;
+            }
+
+            let delta_u = 2. * self.alpha * error * &v;
+            let delta_v = 2. * self.alpha * error * &u;
 
             u = u + &delta_u;
             v = v + &delta_v;
@@ -58,7 +99,8 @@ impl MF {
         let now = Instant::now();
         println!("Training model...");
 
-        let (estimation, error) = self.sgd(y);
+        let (estimation, error) = self.gd(y);
+        // let (estimation, error) = self.sgd(y);
         let prediction = round_all(&estimation);
 
         println!("MSE = {}\n{}", error, prediction);
@@ -74,17 +116,16 @@ fn mse(y: &Array2<f64>, y_hat: &Array2<f64>, mask: &Array2<f64>) -> (Array2<f64>
     return (difference, error as f64);
 }
 
-fn round_all(y: &Array2<f64>) -> Array2<f64> {
-    y.map(|x| x.round())
+fn mse_v2(y: &Array2<f64>, y_hat: &Array2<f64>, mask: &Array2<f64>) -> f64 {
+    let difference = (y - y_hat) * mask;
+    let squared_difference = &difference * &difference;
+    let error = squared_difference.sum() / (y_hat.len() as f64);
+
+    return error;
 }
 
-fn normalize(y: &Array2<f64>) -> Array2<f64> {
-    y.map(|x| {
-        if *x > 5. {
-            return 5.;
-        }
-        return *x;
-    })
+fn round_all(y: &Array2<f64>) -> Array2<f64> {
+    y.map(|x| x.round())
 }
 
 #[cfg(test)]
